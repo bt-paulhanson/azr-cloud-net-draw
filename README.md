@@ -293,6 +293,7 @@ You are free to use, modify, and distribute it with attribution.
 - **Blog**: [Technical Deep Dive](https://hatnes.no/posts/cloudnet-draw/)
 - **Issues**: [GitHub Issues](https://github.com/krhatland/cloudnet-draw/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/krhatland/cloudnet-draw/discussions)
+- **Subnettool** [Subnet Tools](https://subnettool.com)
 
 ---
 
