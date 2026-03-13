@@ -1045,7 +1045,7 @@ def _format_nsg_tooltip(subnet: Dict[str, Any]) -> str:
             f"\u2192 {r['destination']}:{r['destination_port']} {r['access']}"
         )
     if not rules:
-        lines.append("(no rules fetched)")
+        lines.append("(no rules)")
     return "\n".join(lines)
 
 
@@ -1067,7 +1067,7 @@ def _format_udr_tooltip(subnet: Dict[str, Any]) -> str:
             hop += f" ({r['next_hop_ip']})"
         lines.append(f"{r['name']}: {r['address_prefix']} \u2192 {hop}")
     if not routes:
-        lines.append("(no routes fetched)")
+        lines.append("(no routes)")
     return "\n".join(lines)
 
 
@@ -1363,7 +1363,11 @@ def _add_vnet_with_optional_subnets(vnet_data, x_offset, y_offset, root, config,
                 elif icon['type'] == 'udr':
                     udr_icon_id = generate_hierarchical_id(vnet_data, 'icon', f'udr_{subnet_index}')
                     udr_routes = subnet.get("routes", [])
-                    udr_label = f"UDR ({len(udr_routes)} routes)" if udr_routes else "UDR"
+                    if subnet.get("udr_name"):
+                        n = len(udr_routes)
+                        udr_label = f"UDR ({n} {'route' if n == 1 else 'routes'})"
+                    else:
+                        udr_label = "UDR"
                     udr_object = etree.SubElement(root, "object", attrib={
                         "id": udr_icon_id,
                         "label": udr_label,
@@ -1379,7 +1383,11 @@ def _add_vnet_with_optional_subnets(vnet_data, x_offset, y_offset, root, config,
                 elif icon['type'] == 'nsg':
                     nsg_icon_id = generate_hierarchical_id(vnet_data, 'icon', f'nsg_{subnet_index}')
                     nsg_rules = subnet.get("nsg_rules", [])
-                    nsg_label = f"NSG ({len(nsg_rules)} rules)" if nsg_rules else "NSG"
+                    if subnet.get("nsg_name"):
+                        n = len(nsg_rules)
+                        nsg_label = f"NSG ({n} {'rule' if n == 1 else 'rules'})"
+                    else:
+                        nsg_label = "NSG"
                     nsg_object = etree.SubElement(root, "object", attrib={
                         "id": nsg_icon_id,
                         "label": nsg_label,
