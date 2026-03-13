@@ -151,23 +151,8 @@ def find_hub_vnet_using_resource_graph(vnet_identifier: str) -> Dict[str, Any]:
         
         response = resource_graph_client.resources(query_request)
         
-        # Debug: Let's also try a simpler query to see if we can find ANY VNets
-        debug_query = f"Resources | where type =~ 'microsoft.network/virtualnetworks' | where subscriptionId =~ '{target_subscription_id or 'a4007e29-3c9e-47b5-bdce-0c2a2e57c1c1'}' | project name, resourceGroup, subscriptionId"
-        logging.info(f"Debug query: {debug_query}")
-        debug_request = QueryRequest(query=debug_query)
-        debug_response = resource_graph_client.resources(debug_request)
-        logging.info(f"Debug response: {len(debug_response.data) if debug_response.data else 0} VNets found")
-        if debug_response.data:
-            for vnet in debug_response.data:
-                logging.info(f"Debug VNet found: name='{vnet.get('name')}', resourceGroup='{vnet.get('resourceGroup')}', subscriptionId='{vnet.get('subscriptionId')}'")
-        
         if not response.data:
             logging.error(f"No VNets found matching '{vnet_identifier}'. Please verify the VNet identifier format (subscription/resource_group/vnet_name) and ensure the VNet exists.")
-            if debug_response.data:
-                logging.error("Available VNets in the target subscription/resource group:")
-                for vnet in debug_response.data:
-                    if vnet.get('resourceGroup') == target_resource_group or not target_resource_group:
-                        logging.error(f"  - {vnet.get('name')} (resource group: {vnet.get('resourceGroup')})")
             sys.exit(1)
         
         if len(response.data) > 1:
