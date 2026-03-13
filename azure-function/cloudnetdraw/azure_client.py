@@ -51,6 +51,26 @@ def get_credentials() -> Union[ClientSecretCredential, AzureCliCredential]:
     return _credentials
 
 
+def _build_subnet_info(subnet: Any) -> Dict[str, Any]:
+    """Build a subnet info dict from an Azure SDK subnet object.
+
+    Centralises subnet serialisation for this module. An equivalent copy exists
+    in src/cloudnetdraw/azure_client.py and azure-query.py due to
+    those being separately bundled/standalone entrypoints.
+    Extend this function (in a later branch) to add NSG rules and routes.
+    """
+    return {
+        "name": subnet.name,
+        "address": (
+            subnet.address_prefixes[0]
+            if hasattr(subnet, "address_prefixes") and subnet.address_prefixes
+            else subnet.address_prefix or "N/A"
+        ),
+        "nsg": 'Yes' if subnet.network_security_group else 'No',
+        "udr": 'Yes' if subnet.route_table else 'No',
+    }
+
+
 def is_subscription_id(subscription_string: str) -> bool:
     """Check if a subscription string is in UUID format (ID) or name format"""
     if subscription_string is None:
@@ -190,20 +210,7 @@ def find_hub_vnet_using_resource_graph(vnet_identifier: str) -> Dict[str, Any]:
         vnet_info = {
             "name": vnet.name,
             "address_space": vnet.address_space.address_prefixes[0],
-            "subnets": [
-                {
-                    "name": subnet.name,
-                    "address": (
-                        subnet.address_prefixes[0]
-                        if hasattr(subnet, "address_prefixes") and subnet.address_prefixes
-                        else subnet.address_prefix or "N/A"
-                    ),
-                    "nsg": 'Yes' if subnet.network_security_group else 'No',
-                    "udr": 'Yes' if subnet.route_table else 'No'
-                }
-                for subnet in vnet.subnets
-            ],
-            
+            "subnets": [_build_subnet_info(s) for s in vnet.subnets],
             "resource_id": vnet.id,
             "tenant_id": tenant_id,
             "subscription_id": subscription_id,
@@ -287,20 +294,7 @@ def find_peered_vnets(peering_resource_ids: List[str]) -> Tuple[List[Dict[str, A
             vnet_info = {
                 "name": vnet.name,
                 "address_space": vnet.address_space.address_prefixes[0],
-                "subnets": [
-                    {
-                        "name": subnet.name,
-                        "address": (
-                            subnet.address_prefixes[0]
-                            if hasattr(subnet, "address_prefixes") and subnet.address_prefixes
-                            else subnet.address_prefix or "N/A"
-                        ),
-                        "nsg": 'Yes' if subnet.network_security_group else 'No',
-                        "udr": 'Yes' if subnet.route_table else 'No'
-                    }
-                    for subnet in vnet.subnets
-                ],
-                
+                "subnets": [_build_subnet_info(s) for s in vnet.subnets],
                 "resource_id": vnet.id,
                 "tenant_id": tenant_id,
                 "subscription_id": subscription_id,
@@ -433,20 +427,7 @@ def get_vnet_topology_for_selected_subscriptions(subscription_ids: List[str]) ->
                     vnet_info = {
                         "name": vnet.name,
                         "address_space": vnet.address_space.address_prefixes[0],
-                        "subnets": [
-                            {
-                                "name": subnet.name,
-                                "address": (
-                                    subnet.address_prefixes[0]
-                                    if hasattr(subnet, "address_prefixes") and subnet.address_prefixes
-                                    else subnet.address_prefix or "N/A"
-                                ),
-                                "nsg": 'Yes' if subnet.network_security_group else 'No',
-                                "udr": 'Yes' if subnet.route_table else 'No'
-                            }
-                            for subnet in vnet.subnets
-                        ],
-                        
+                        "subnets": [_build_subnet_info(s) for s in vnet.subnets],
                         "resource_id": vnet.id,
                         "tenant_id": tenant_id,
                         "subscription_id": subscription_id,
