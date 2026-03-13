@@ -54,7 +54,9 @@ def get_credentials() -> Union[ClientSecretCredential, AzureCliCredential]:
 def _build_subnet_info(subnet: Any) -> Dict[str, Any]:
     """Build a subnet info dict from an Azure SDK subnet object.
 
-    This is the single source of truth for subnet serialisation.
+    Centralises subnet serialisation for this module. An equivalent copy exists
+    in src/cloudnetdraw/azure_client.py and azure-query.py due to
+    those being separately bundled/standalone entrypoints.
     Extend this function (in a later branch) to add NSG rules and routes.
     """
     return {
