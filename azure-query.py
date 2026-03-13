@@ -83,6 +83,7 @@ def _build_subnet_info(subnet: Any, network_client: Any, _cache: Optional[Dict] 
             info["nsg_name"] = nsg_name
             if _cache is not None and nsg_id in _cache:
                 info["nsg_rules"] = _cache[nsg_id]
+                logging.debug(f"Using cached {len(info['nsg_rules'])} NSG rules for {nsg_name}")
             else:
                 nsg = network_client.network_security_groups.get(nsg_rg, nsg_name)
                 rules = sorted(
@@ -105,7 +106,7 @@ def _build_subnet_info(subnet: Any, network_client: Any, _cache: Optional[Dict] 
                 info["nsg_rules"] = rules
                 if _cache is not None:
                     _cache[nsg_id] = rules
-            logging.info(f"Fetched {len(info['nsg_rules'])} NSG rules for {info['nsg_name']}")
+                logging.info(f"Fetched {len(info['nsg_rules'])} NSG rules for {nsg_name}")
         except Exception as e:
             logging.warning(f"Could not fetch NSG rules for subnet {subnet.name}: {e}")
 
@@ -117,6 +118,7 @@ def _build_subnet_info(subnet: Any, network_client: Any, _cache: Optional[Dict] 
             info["udr_name"] = rt_name
             if _cache is not None and rt_id in _cache:
                 info["routes"] = _cache[rt_id]
+                logging.debug(f"Using cached {len(info['routes'])} routes for {rt_name}")
             else:
                 rt = network_client.route_tables.get(rt_rg, rt_name)
                 routes = [
@@ -131,7 +133,7 @@ def _build_subnet_info(subnet: Any, network_client: Any, _cache: Optional[Dict] 
                 info["routes"] = routes
                 if _cache is not None:
                     _cache[rt_id] = routes
-            logging.info(f"Fetched {len(info['routes'])} routes for {info['udr_name']}")
+                logging.info(f"Fetched {len(info['routes'])} routes for {rt_name}")
         except Exception as e:
             logging.warning(f"Could not fetch routes for subnet {subnet.name}: {e}")
 
