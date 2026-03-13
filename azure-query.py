@@ -46,7 +46,7 @@ def get_credentials() -> Union[ClientSecretCredential, AzureCliCredential]:
     return _credentials
 
 
-def _build_subnet_info(subnet: Any, network_client: Any) -> Dict[str, Any]:
+def _build_subnet_info(subnet: Any, network_client: Any, _cache: Optional[Dict] = None) -> Dict[str, Any]:
     """Build a subnet info dict from an Azure SDK subnet object.
 
     Centralises subnet serialisation for this standalone script. An equivalent
@@ -57,6 +57,8 @@ def _build_subnet_info(subnet: Any, network_client: Any) -> Dict[str, Any]:
     Fetches NSG security rules and route table entries when present.
     Both lookups are non-fatal: on failure a warning is logged and the field
     is left as an empty list so the diagram still renders.
+    Pass a dict as _cache to deduplicate ARM API calls when multiple subnets
+    share the same NSG or route table.
     """
     info: Dict[str, Any] = {
         "name": subnet.name,
@@ -74,52 +76,64 @@ def _build_subnet_info(subnet: Any, network_client: Any) -> Dict[str, Any]:
     }
 
     if subnet.network_security_group:
-        nsg_id = subnet.network_security_group.id
-        nsg_rg = extract_resource_group(nsg_id)
-        nsg_name = nsg_id.split('/')[-1]
-        info["nsg_name"] = nsg_name
         try:
-            nsg = network_client.network_security_groups.get(nsg_rg, nsg_name)
-            info["nsg_rules"] = sorted(
-                [
-                    {
-                        "name": r.name,
-                        "priority": r.priority,
-                        "direction": r.direction,
-                        "access": r.access,
-                        "protocol": r.protocol,
-                        "source": r.source_address_prefix or ",".join(r.source_address_prefixes or []),
-                        "source_port": r.source_port_range or ",".join(r.source_port_ranges or []),
-                        "destination": r.destination_address_prefix or ",".join(r.destination_address_prefixes or []),
-                        "destination_port": r.destination_port_range or ",".join(r.destination_port_ranges or []),
-                    }
-                    for r in (nsg.security_rules or [])
-                ],
-                key=lambda r: (r["direction"], r["priority"]),
-            )
-            logging.info(f"Fetched {len(info['nsg_rules'])} NSG rules for {nsg_name}")
+            nsg_id = subnet.network_security_group.id
+            nsg_rg = extract_resource_group(nsg_id)
+            nsg_name = nsg_id.split('/')[-1]
+            info["nsg_name"] = nsg_name
+            if _cache is not None and nsg_id in _cache:
+                info["nsg_rules"] = _cache[nsg_id]
+            else:
+                nsg = network_client.network_security_groups.get(nsg_rg, nsg_name)
+                rules = sorted(
+                    [
+                        {
+                            "name": r.name,
+                            "priority": r.priority,
+                            "direction": r.direction,
+                            "access": r.access,
+                            "protocol": r.protocol,
+                            "source": r.source_address_prefix or ",".join(r.source_address_prefixes or []),
+                            "source_port": r.source_port_range or ",".join(r.source_port_ranges or []),
+                            "destination": r.destination_address_prefix or ",".join(r.destination_address_prefixes or []),
+                            "destination_port": r.destination_port_range or ",".join(r.destination_port_ranges or []),
+                        }
+                        for r in (nsg.security_rules or [])
+                    ],
+                    key=lambda r: (r["direction"], r["priority"]),
+                )
+                info["nsg_rules"] = rules
+                if _cache is not None:
+                    _cache[nsg_id] = rules
+            logging.info(f"Fetched {len(info['nsg_rules'])} NSG rules for {info['nsg_name']}")
         except Exception as e:
-            logging.warning(f"Could not fetch NSG rules for {nsg_name}: {e}")
+            logging.warning(f"Could not fetch NSG rules for subnet {subnet.name}: {e}")
 
     if subnet.route_table:
-        rt_id = subnet.route_table.id
-        rt_rg = extract_resource_group(rt_id)
-        rt_name = rt_id.split('/')[-1]
-        info["udr_name"] = rt_name
         try:
-            rt = network_client.route_tables.get(rt_rg, rt_name)
-            info["routes"] = [
-                {
-                    "name": r.name,
-                    "address_prefix": r.address_prefix,
-                    "next_hop_type": r.next_hop_type,
-                    "next_hop_ip": r.next_hop_ip_address or "",
-                }
-                for r in (rt.routes or [])
-            ]
-            logging.info(f"Fetched {len(info['routes'])} routes for {rt_name}")
+            rt_id = subnet.route_table.id
+            rt_rg = extract_resource_group(rt_id)
+            rt_name = rt_id.split('/')[-1]
+            info["udr_name"] = rt_name
+            if _cache is not None and rt_id in _cache:
+                info["routes"] = _cache[rt_id]
+            else:
+                rt = network_client.route_tables.get(rt_rg, rt_name)
+                routes = [
+                    {
+                        "name": r.name,
+                        "address_prefix": r.address_prefix,
+                        "next_hop_type": r.next_hop_type,
+                        "next_hop_ip": r.next_hop_ip_address or "",
+                    }
+                    for r in (rt.routes or [])
+                ]
+                info["routes"] = routes
+                if _cache is not None:
+                    _cache[rt_id] = routes
+            logging.info(f"Fetched {len(info['routes'])} routes for {info['udr_name']}")
         except Exception as e:
-            logging.warning(f"Could not fetch routes for {rt_name}: {e}")
+            logging.warning(f"Could not fetch routes for subnet {subnet.name}: {e}")
 
     return info
 
@@ -277,10 +291,11 @@ def find_hub_vnet_using_resource_graph(vnet_identifier: str) -> Dict[str, Any]:
         resourcegroup_id = f"/subscriptions/{subscription_id}/resourceGroups/{resource_group}"
         azure_console_url = f"https://portal.azure.com/#@{tenant_id}/resource{vnet.id}"
 
+        _nsg_rt_cache: Dict[str, Any] = {}
         vnet_info = {
             "name": vnet.name,
             "address_space": vnet.address_space.address_prefixes[0],
-            "subnets": [_build_subnet_info(s, network_client) for s in vnet.subnets],
+            "subnets": [_build_subnet_info(s, network_client, _nsg_rt_cache) for s in vnet.subnets],
             "resource_id": vnet.id,
             "tenant_id": tenant_id,
             "subscription_id": subscription_id,
@@ -319,6 +334,7 @@ def find_peered_vnets(peering_resource_ids: List[str]) -> Tuple[List[Dict[str, A
     peered_vnets = []
     processed_vnets = set()
     accessible_resource_ids = []
+    _nsg_rt_cache: Dict[str, Any] = {}  # Cache NSG/UDR lookups to avoid duplicate ARM calls
 
     for resource_id in peering_resource_ids:
         try:
@@ -350,7 +366,7 @@ def find_peered_vnets(peering_resource_ids: List[str]) -> Tuple[List[Dict[str, A
             vnet_info = {
                 "name": vnet.name,
                 "address_space": vnet.address_space.address_prefixes[0],
-                "subnets": [_build_subnet_info(s, network_client) for s in vnet.subnets],
+                "subnets": [_build_subnet_info(s, network_client, _nsg_rt_cache) for s in vnet.subnets],
                 "resource_id": vnet.id,
                 "tenant_id": tenant_id,
                 "subscription_id": subscription_id,
@@ -463,6 +479,7 @@ def get_vnet_topology_for_selected_subscriptions(subscription_ids: List[str]) ->
     """
     network_data = {"vnets": []}
     vnet_candidates: List[Dict[str, Any]] = []
+    _nsg_rt_cache: Dict[str, Any] = {}  # Cache NSG/UDR lookups to avoid duplicate ARM calls
 
     subscription_client = SubscriptionClient(get_credentials())
 
@@ -527,7 +544,7 @@ def get_vnet_topology_for_selected_subscriptions(subscription_ids: List[str]) ->
                     vnet_info = {
                         "name": vnet.name,
                         "address_space": vnet.address_space.address_prefixes[0],
-                        "subnets": [_build_subnet_info(s, network_client) for s in vnet.subnets],
+                        "subnets": [_build_subnet_info(s, network_client, _nsg_rt_cache) for s in vnet.subnets],
                         "resource_id": vnet.id,
                         "tenant_id": tenant_id,
                         "subscription_id": subscription_id,
