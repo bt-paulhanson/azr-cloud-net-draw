@@ -9,7 +9,6 @@ Covers:
     tooltip accuracy
     object->mxCell XML structure
 """
-import pytest
 from lxml import etree
 from unittest.mock import Mock
 
