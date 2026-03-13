@@ -1026,6 +1026,51 @@ def _create_layout_zones(hub_vnets: List[Dict[str, Any]], spoke_vnets_classified
     return zone_spokes
 
 
+def _format_nsg_tooltip(subnet: Dict[str, Any]) -> str:
+    """Format NSG rules as a tooltip string for the NSG icon.
+
+    Args:
+        subnet: Subnet data dict containing nsg_name and nsg_rules fields.
+
+    Returns:
+        Formatted tooltip string with NSG name and rule summaries.
+    """
+    nsg_name = subnet.get("nsg_name", "")
+    rules = subnet.get("nsg_rules", [])
+    lines = [f"NSG: {nsg_name}" if nsg_name else "NSG"]
+    for r in rules:
+        lines.append(
+            f"[{r['direction']}] {r['priority']} {r['name']}: "
+            f"{r['protocol']} {r['source']}:{r['source_port']} "
+            f"\u2192 {r['destination']}:{r['destination_port']} {r['access']}"
+        )
+    if not rules:
+        lines.append("(no rules)")
+    return "\n".join(lines)
+
+
+def _format_udr_tooltip(subnet: Dict[str, Any]) -> str:
+    """Format route table entries as a tooltip string for the UDR icon.
+
+    Args:
+        subnet: Subnet data dict containing udr_name and routes fields.
+
+    Returns:
+        Formatted tooltip string with route table name and route summaries.
+    """
+    udr_name = subnet.get("udr_name", "")
+    routes = subnet.get("routes", [])
+    lines = [f"UDR: {udr_name}" if udr_name else "UDR"]
+    for r in routes:
+        hop = r["next_hop_type"]
+        if r.get("next_hop_ip"):
+            hop += f" ({r['next_hop_ip']})"
+        lines.append(f"{r['name']}: {r['address_prefix']} \u2192 {hop}")
+    if not routes:
+        lines.append("(no routes)")
+    return "\n".join(lines)
+
+
 def _add_vnet_with_optional_subnets(vnet_data, x_offset, y_offset, root, config,
                                     show_subnets: bool = False, style_override=None):
     """
@@ -1317,20 +1362,40 @@ def _add_vnet_with_optional_subnets(vnet_data, x_offset, y_offset, root, config,
                     )
                 elif icon['type'] == 'udr':
                     udr_icon_id = generate_hierarchical_id(vnet_data, 'icon', f'udr_{subnet_index}')
+                    udr_routes = subnet.get("routes", [])
+                    if subnet.get("udr_name"):
+                        n = len(udr_routes)
+                        udr_label = f"UDR ({n} {'route' if n == 1 else 'routes'})"
+                    else:
+                        udr_label = "UDR"
+                    udr_object = etree.SubElement(root, "object", attrib={
+                        "id": udr_icon_id,
+                        "label": udr_label,
+                        "tooltip": _format_udr_tooltip(subnet),
+                    })
                     icon_element = etree.SubElement(
-                        root,
+                        udr_object,
                         "mxCell",
-                        id=udr_icon_id,
                         style=f"shape=image;html=1;image={config.get_icon_path('route_table')};",
                         vertex="1",
                         parent=main_id,
                     )
                 elif icon['type'] == 'nsg':
                     nsg_icon_id = generate_hierarchical_id(vnet_data, 'icon', f'nsg_{subnet_index}')
+                    nsg_rules = subnet.get("nsg_rules", [])
+                    if subnet.get("nsg_name"):
+                        n = len(nsg_rules)
+                        nsg_label = f"NSG ({n} {'rule' if n == 1 else 'rules'})"
+                    else:
+                        nsg_label = "NSG"
+                    nsg_object = etree.SubElement(root, "object", attrib={
+                        "id": nsg_icon_id,
+                        "label": nsg_label,
+                        "tooltip": _format_nsg_tooltip(subnet),
+                    })
                     icon_element = etree.SubElement(
-                        root,
+                        nsg_object,
                         "mxCell",
-                        id=nsg_icon_id,
                         style=f"shape=image;html=1;image={config.get_icon_path('nsg')};",
                         vertex="1",
                         parent=main_id,
